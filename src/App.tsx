@@ -35,14 +35,8 @@ export default function App() {
   const [showEvents, setShowEvents] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
-  const [birthIso, setBirthIso] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem("miisaBirth");
-    } catch (e) {
-      console.warn("localStorage read failed", e);
-      return null;
-    }
-  });
+  // Hard-coded birth date (13.6.26) — keep this value persistent
+  const [birthIso, setBirthIso] = useState<string | null>(() => "2026-06-13");
   const [todaysEvents, setTodaysEvents] = useState<Event[]>([]);
   const [latestFeeding, setLatestFeeding] = useState<Event | null>(null);
   const [now, setNow] = useState<Date>(new Date());
@@ -429,35 +423,33 @@ export default function App() {
 
             {type === "feeding" && lastFeeding && (
               <div className="feeding-info">
+                {elapsedMs !== null && (() => {
+                  const threeH = 3 * 60 * 60 * 1000;
+                  const remainingMs = Math.max(0, threeH - elapsedMs);
+                  const percent = Math.min(100, Math.round((elapsedMs / threeH) * 100));
+                  const stateClass = remainingMs === 0 ? "overdue" : remainingMs < 60 * 60 * 1000 ? "soon" : "ok";
+                  const icon = stateClass === "overdue" ? "🚨" : stateClass === "soon" ? "🔔" : "🕒";
+
+                  return (
+                    <div className={`remaining-pill ${stateClass} top`}> 
+                      <div className="remaining-header">
+                        <span className="remaining-icon">{icon}</span>
+                        <div className="remaining-text">
+                          {remainingMs === 0 ? "Aika imetykseen: HETI" : `Aikaa seuraavaan: ${formatRemainingMs(remainingMs)}`}
+                        </div>
+                      </div>
+                      <div className="remaining-progress" aria-hidden>
+                        <div className="remaining-fill" style={{ width: `${percent}%` }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="feeding-header">🍼 Viimeisin imetys</div>
                 <div className="elapsed-time">{formatDurationMs(elapsedMs ?? 0)} sitten</div>
                 <div className="last-time">Viimeksi klo {formatTime(lastFeeding.timestamp)}</div>
                 {computeAvgIntervalToday() && (
                   <div className="avg-interval">Keskiväli tänään: {computeAvgIntervalToday()}</div>
-                )}
-                {/* Time until next feeding (every 3 hours) - prominent pill + progress */}
-                {elapsedMs !== null && (
-                  (() => {
-                    const threeH = 3 * 60 * 60 * 1000;
-                    const remainingMs = Math.max(0, threeH - elapsedMs);
-                    const percent = Math.min(100, Math.round((elapsedMs / threeH) * 100));
-                    const stateClass = remainingMs === 0 ? "overdue" : remainingMs < 60 * 60 * 1000 ? "soon" : "ok";
-
-                    const icon = stateClass === "overdue" ? "🚨" : stateClass === "soon" ? "🔔" : "🕒";
-                    return (
-                      <div className={`remaining-pill ${stateClass}`}>
-                        <div className="remaining-header">
-                          <span className="remaining-icon">{icon}</span>
-                          <div className="remaining-text">
-                            {remainingMs === 0 ? "Aika imetykseen: HETI" : `Aikaa seuraavaan: ${formatRemainingMs(remainingMs)}`}
-                          </div>
-                        </div>
-                        <div className="remaining-progress" aria-hidden>
-                          <div className="remaining-fill" style={{ width: `${percent}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })()
                 )}
               </div>
             )}

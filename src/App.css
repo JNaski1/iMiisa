@@ -306,6 +306,11 @@
   .card-count { font-size: 44px; }
 }
 
+/* when placed at top of feeding card, span full width and stand out */
+.remaining-pill.top { width: 100%; padding: 12px; border-radius: 14px; }
+.remaining-pill.top.ok { background: linear-gradient(180deg,#dcfce7,#bbf7d0); }
+.remaining-pill.top .remaining-text { font-size: 18px; }
+
 /* Events */
 .events-list { margin-top: 16px; }
 .event-item { display:flex; align-items:center; justify-content:center; gap:12px; padding:10px 0; }

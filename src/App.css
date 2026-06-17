@@ -406,9 +406,14 @@ body { background: linear-gradient(180deg,#f8f9ff 0%,#f2f6ff 100%); }
 
 /* Brand avatar (header and lock) */
 .brand { display:flex; flex-direction:column; align-items:center; gap:6px; }
-.brand-avatar { width:56px; height:56px; border-radius:12px; object-fit:cover; border: 3px solid rgba(255,255,255,0.9); box-shadow: 0 8px 22px rgba(2,6,23,0.08); }
+.brand-avatar { width:72px; height:72px; border-radius:14px; object-fit:cover; border: 3px solid rgba(255,255,255,0.95); box-shadow: 0 10px 28px rgba(2,6,23,0.09); }
 .brand .page-title { font-size: 28px; font-weight: 800; }
-.lock-avatar { width:64px; height:64px; border-radius:14px; }
+.lock-avatar { width:88px; height:88px; border-radius:16px; }
+
+@media (max-width: 420px) {
+  .brand-avatar { width:56px; height:56px; }
+  .lock-avatar { width:72px; height:72px; }
+}
 
 .summary-item {
   display: flex;

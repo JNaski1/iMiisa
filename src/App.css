@@ -352,8 +352,9 @@ body { background: linear-gradient(180deg,#f8f9ff 0%,#f2f6ff 100%); }
 /* small logout button placed inside container as an absolute element */
 .container { position: relative; }
 .logout-bottom { text-align: center; margin-top: 12px; }
-.logout-bottom-btn { background: #fff; border: 1px solid rgba(0,0,0,0.06); padding: 8px 12px; border-radius: 10px; font-size: 15px; cursor: pointer; }
+.logout-bottom-btn { background: #fff; border: 1px solid rgba(0,0,0,0.06); padding: 8px 12px; border-radius: 10px; font-size: 15px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
 .logout-bottom-btn:hover { box-shadow: 0 8px 20px rgba(2,6,23,0.06); }
+.logout-icon { font-size: 16px; line-height: 1; }
 
 /* Tabs */
 .view-tabs { display:flex; gap:8px; justify-content:center; margin:12px 0; }

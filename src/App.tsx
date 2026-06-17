@@ -656,7 +656,10 @@ export default function App() {
             </div>
 
             <div className="logout-bottom">
-              <button className="logout-bottom-btn" onClick={logout}>Kirjaudu ulos 🔒</button>
+              <button className="logout-bottom-btn" onClick={logout}>
+                <span className="logout-icon">🔒</span>
+                <span>Kirjaudu ulos</span>
+              </button>
             </div>
           </>
         ) : (

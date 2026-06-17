@@ -377,6 +377,39 @@ body { background: linear-gradient(180deg,#f8f9ff 0%,#f2f6ff 100%); }
 .summary-footer { margin-top: 12px; text-align: center; }
 .total-pill.small { padding: 6px 10px; font-size: 14px; border-radius: 999px; }
 
+/* Summary grid */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 6px;
+  align-items: stretch;
+  justify-items: stretch;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(2,6,23,0.04);
+  min-height: 88px;
+}
+
+/* ensure icons and counts scale consistently */
+.summary-icon { font-size: 24px; margin-bottom: 6px; }
+.summary-count { font-size: 20px; font-weight: 800; }
+.summary-label { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+/* make sure items are centered inside their grid cells on small screens */
+@media (max-width: 640px) {
+  .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .summary-item { min-height: 84px; padding: 10px; }
+}
 @media (max-width: 640px) {
   /* use two columns on small screens for side-by-side summary boxes */
   .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }

@@ -527,6 +527,7 @@ export default function App() {
   return (
     <div className="app-root">
       <div className="container">
+        
         <div className="app-header">
           <button
             onClick={() =>
@@ -552,8 +553,6 @@ export default function App() {
           >
             →
           </button>
-
-          <button onClick={logout} className="nav-button lock-action" title="Lukitse">🔒</button>
         </div>
 
         <div className="safety-banner" style={{ background: safetyOk ? "#22c55e" : "#ef4444" }}>
@@ -651,6 +650,10 @@ export default function App() {
                   )}
                 </div>
               )}
+            </div>
+
+            <div className="logout-bottom">
+              <button className="logout-bottom-btn" onClick={logout}>Kirjaudu ulos 🔒</button>
             </div>
           </>
         ) : (

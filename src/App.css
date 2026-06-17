@@ -307,7 +307,14 @@
 }
 
 /* when placed at top of feeding card, span full width and stand out */
-.remaining-pill.top { width: 100%; padding: 12px; border-radius: 14px; }
+.remaining-pill.top {
+  box-sizing: border-box;
+  /* span the card horizontally but remain visually contained */
+  width: calc(100% + 44px);
+  margin: 0 -22px 12px;
+  padding: 12px 22px;
+  border-radius: 14px 14px 12px 12px;
+}
 .remaining-pill.top.ok { background: linear-gradient(180deg,#dcfce7,#bbf7d0); }
 .remaining-pill.top .remaining-text { font-size: 18px; }
 
@@ -367,6 +374,7 @@ body { background: linear-gradient(180deg,#f8f9ff 0%,#f2f6ff 100%); }
 .total-pill.small { padding: 6px 10px; font-size: 14px; border-radius: 999px; }
 
 @media (max-width: 640px) {
-  .summary-grid { grid-template-columns: 1fr; }
+  /* use two columns on small screens for side-by-side summary boxes */
+  .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
 }
 

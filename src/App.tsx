@@ -36,7 +36,7 @@ export default function App() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
   // Hard-coded birth date (13.6.26) — keep this value persistent
-  const [birthIso, setBirthIso] = useState<string | null>(() => "2026-06-13");
+  const [birthIso] = useState<string>(() => "2026-06-13");
   const [todaysEvents, setTodaysEvents] = useState<Event[]>([]);
   const [latestFeeding, setLatestFeeding] = useState<Event | null>(null);
   const [now, setNow] = useState<Date>(new Date());
@@ -74,14 +74,7 @@ export default function App() {
 
   // birthIso is initialized from localStorage lazily above
 
-  function saveBirthIso(iso: string) {
-    setBirthIso(iso);
-    try {
-      localStorage.setItem("miisaBirth", iso);
-    } catch (e) {
-      console.warn("localStorage write failed", e);
-    }
-  }
+  
 
 
   
@@ -480,15 +473,6 @@ export default function App() {
             <div className="date-text">{formatDate(currentDate)}</div>
 
             <div className="age-container">
-              <div>
-                Syntymäpäiväni:
-                <input
-                  className="birth-input"
-                  type="date"
-                  value={birthIso ?? ""}
-                  onChange={(e) => saveBirthIso(e.target.value)}
-                />
-              </div>
               <div className="age-text">Ikäni: {computeAgeDays(birthIso) || "—"}</div>
             </div>
           </div>

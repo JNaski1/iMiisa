@@ -85,6 +85,8 @@ export default function App() {
   const [, setPhotoLoading] = useState(false);
   const [todaysPhoto, setTodaysPhoto] = useState<{ id: string; photo_date: string; photo_path: string; photo_url?: string } | null>(null);
   const [allPhotos, setAllPhotos] = useState<Array<{ id: string; photo_date: string; photo_path: string; photo_url?: string }>>([]);
+  const [photoStatus, setPhotoStatus] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   const currentDateKey = getDateKey(currentDate);
 
@@ -380,17 +382,41 @@ export default function App() {
 
   async function uploadPhotoForDate(file: File, dateKey: string) {
     setPhotoLoading(true);
+    setPhotoError(null);
+    setPhotoStatus('[PHOTO_SELECTED] file=' + (file && file.name));
+    console.log('[PHOTO_SELECTED]', { fileName: file?.name, size: file?.size, type: file?.type, dateKey });
     try {
       const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf('.')) : '.jpg';
       const path = `${dateKey}${ext}`;
-      const up = await supabase.storage.from('daily-photos').upload(path, file, { upsert: true });
-      if (up.error) throw up.error;
+      const bucket = 'daily-photos';
+      setPhotoStatus('[PHOTO_UPLOAD_START]');
+      console.log('[PHOTO_UPLOAD_START]', { bucket, path });
+
+      const up = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
+      console.log('[PHOTO_UPLOAD_RESPONSE]', { response: up });
+      if (up.error) {
+        console.error('[PHOTO_UPLOAD_ERROR]', up.error);
+        setPhotoError(`Storage upload failed: ${up.error.message || up.error.toString()}`);
+        setPhotoStatus(null);
+        throw up.error;
+      }
+      setPhotoStatus('[PHOTO_UPLOAD_COMPLETED]');
 
       // upsert DB record
       const now = new Date().toISOString();
+      setPhotoStatus('[DB_UPSERT_START]');
+      console.log('[DB_UPSERT_START]', { table: 'daily_photos', values: { photo_date: dateKey, photo_path: path, photo_url: path, created_at: now } });
       const { data, error } = await supabase.from('daily_photos').upsert({ photo_date: dateKey, photo_path: path, photo_url: path, created_at: now }, { onConflict: 'photo_date' }).select().maybeSingle();
-      if (error) throw error;
+      console.log('[DB_UPSERT_RESPONSE]', { data, error });
+      if (error) {
+        console.error('[DB_UPSERT_ERROR]', error);
+        setPhotoError(`Database upsert failed: ${error.message || error.toString()}`);
+        setPhotoStatus(null);
+        throw error;
+      }
+      setPhotoStatus('[DB_UPSERT_COMPLETED]');
       const signed = await getSignedUrlForPath(path);
+      console.log('[SIGNED_URL]', { path, signed });
       const rec = { id: data?.id ?? '', photo_date: dateKey, photo_path: path, photo_url: signed };
       // update states
       if (dateKey === getDateKey(new Date())) setTodaysPhoto(rec);
@@ -401,7 +427,11 @@ export default function App() {
         console.error('failed to insert photo event', e);
       }
       // refresh gallery and event lists
+      setPhotoStatus('[GALLERY_REFRESH_START]');
+      console.log('[GALLERY_REFRESH_START]');
       await loadAllPhotos();
+      console.log('[GALLERY_REFRESH_COMPLETED]');
+      setPhotoStatus('[UPLOAD_FLOW_COMPLETED]');
       if (dateKey === currentDateKey) {
         await loadEvents();
         await loadTodaysEvents();
@@ -410,6 +440,8 @@ export default function App() {
       return rec;
     } catch (e) {
       console.error('upload photo failed', e);
+      if (!photoError) setPhotoError(e instanceof Error ? e.message : String(e));
+      setPhotoStatus(null);
       throw e;
     } finally {
       setPhotoLoading(false);
@@ -692,6 +724,8 @@ export default function App() {
           📷 Lisää kuva
           <input style={{ display: 'none' }} type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const rec = await uploadPhotoForDate(f, dateKey); onDone?.(rec); } }} />
         </label>
+        {photoStatus && <div className="photo-status">{photoStatus}</div>}
+        {photoError && <div className="photo-error">{photoError}</div>}
       </div>
     );
   }

@@ -32,13 +32,24 @@ function getDateKey(date: Date) {
 
 export default function App() {
   const AUTH_KEY = "imiisa_authenticated";
-  const [authenticated, setAuthenticated] = useState<boolean>(() => {
+  const readAuth = () => {
     try {
-      return localStorage.getItem(AUTH_KEY) === "true";
+      return sessionStorage.getItem(AUTH_KEY) === "true";
     } catch (e) {
       return false;
     }
-  });
+  };
+
+  const writeAuth = (v: boolean) => {
+    try {
+      if (v) sessionStorage.setItem(AUTH_KEY, "true");
+      else sessionStorage.removeItem(AUTH_KEY);
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const [authenticated, setAuthenticated] = useState<boolean>(() => readAuth());
   const [pinInput, setPinInput] = useState<string>("");
   const [pinError, setPinError] = useState<string | null>(null);
 
@@ -86,11 +97,7 @@ export default function App() {
   }, [authenticated]);
 
   function logout() {
-    try {
-      localStorage.removeItem(AUTH_KEY);
-    } catch (e) {
-      // ignore
-    }
+    writeAuth(false);
     setAuthenticated(false);
     setPinInput("");
     setPinError(null);
@@ -100,11 +107,7 @@ export default function App() {
     // single shared PIN
     const PIN = "1306";
     if (pinInput.trim() === PIN) {
-      try {
-        localStorage.setItem(AUTH_KEY, "true");
-      } catch (e) {
-        // ignore storage errors
-      }
+      writeAuth(true);
       setAuthenticated(true);
       setPinInput("");
       setPinError(null);

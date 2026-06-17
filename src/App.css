@@ -367,7 +367,10 @@ body { background: linear-gradient(180deg,#f8f9ff 0%,#f2f6ff 100%); }
 
 /* Summary grid */
 .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 6px; }
-.summary-item { background: rgba(255,255,255,0.8); border-radius: 12px; padding: 12px; text-align: center; box-shadow: 0 6px 18px rgba(2,6,23,0.04); }
+.summary-item { display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255,255,255,0.8); border-radius: 12px; padding: 12px; text-align: center; box-shadow: 0 6px 18px rgba(2,6,23,0.04); }
+
+/* center grid children in their cells for small screens */
+.summary-grid { justify-items: center; }
 .summary-icon { font-size: 26px; margin-bottom: 6px; }
 .summary-count { font-size: 22px; font-weight: 800; }
 .summary-label { font-size: 13px; color: var(--muted); margin-top: 4px; }

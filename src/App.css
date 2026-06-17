@@ -340,15 +340,20 @@ body { background: linear-gradient(180deg,#f8f9ff 0%,#f2f6ff 100%); }
 .birth-input { width: 160px; }
 
 /* Lock screen */
-.lock-screen { display:flex; align-items:center; justify-content:center; min-height: 60vh; padding: 40px 12px; }
-.lock-card { width: 100%; max-width: 420px; background: linear-gradient(180deg,#fff,#fbfbff); border-radius: 16px; padding: 28px; box-shadow: 0 12px 40px rgba(2,6,23,0.08); text-align: center; }
-.lock-prompt { margin-top: 8px; color: var(--muted); font-size: 16px; }
-.pin-input { margin-top: 16px; width: 100%; padding: 14px 12px; font-size: 22px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.06); text-align: center; }
-.unlock-btn { margin-top: 14px; width: 100%; padding: 12px; font-size: 18px; border-radius: 10px; background: #111827; color: #fff; border: none; cursor: pointer; }
-.pin-error { margin-top: 10px; color: #dc2626; font-weight: 700; }
+.lock-screen { display:flex; align-items:center; justify-content:center; min-height: 52vh; padding: 28px 12px; }
+.lock-card { width: 100%; max-width: 360px; background: linear-gradient(180deg,#fff,#fbfbff); border-radius: 12px; padding: 18px; box-shadow: 0 8px 24px rgba(2,6,23,0.06); text-align: center; }
+.lock-card { width: 100%; max-width: 320px; background: linear-gradient(180deg,#fff,#fbfbff); border-radius: 12px; padding: 14px; box-shadow: 0 8px 24px rgba(2,6,23,0.06); text-align: center; display: flex; flex-direction: column; align-items: center; }
+.lock-card .page-title { font-size: 28px; margin-bottom: 4px; }
+.lock-prompt { margin-top: 4px; color: var(--muted); font-size: 14px; }
+.pin-input { margin-top: 12px; width: 120px; padding: 10px 8px; font-size: 20px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.06); text-align: center; letter-spacing: 6px; }
+.unlock-btn { margin-top: 10px; width: auto; padding: 8px 14px; font-size: 15px; border-radius: 10px; background: #111827; color: #fff; border: none; cursor: pointer; }
+.pin-error { margin-top: 8px; color: #dc2626; font-weight: 700; }
 
-/* small lock action button in header */
-.lock-action { padding: 8px 10px; font-size: 18px; margin-left: 8px; }
+/* small logout button placed inside container as an absolute element */
+.container { position: relative; }
+.logout-fab { position: absolute; top: 10px; right: 10px; z-index: 40; }
+.logout-btn { background: rgba(255,255,255,0.9); border: 1px solid rgba(0,0,0,0.06); padding: 8px 10px; border-radius: 10px; font-size: 18px; cursor: pointer; }
+.logout-btn:hover { box-shadow: 0 6px 18px rgba(2,6,23,0.06); }
 
 /* Tabs */
 .view-tabs { display:flex; gap:8px; justify-content:center; margin:12px 0; }

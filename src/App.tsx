@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabase";
 import "./App.css";
 
-type EventType = "poop" | "pee" | "feeding";
+type EventType = "poop" | "pee" | "feeding" | "photo";
 
 type Event = {
   id: string;
@@ -62,7 +62,7 @@ export default function App() {
   const [todaysEvents, setTodaysEvents] = useState<Event[]>([]);
   const [latestFeeding, setLatestFeeding] = useState<Event | null>(null);
   const [now, setNow] = useState<Date>(new Date());
-  const [activeView, setActiveView] = useState<"dashboard" | "stats">("dashboard");
+  const [activeView, setActiveView] = useState<"dashboard" | "stats" | "photos">("dashboard");
   const [stats, setStats] = useState<{
     feedings: number;
     pees: number;
@@ -71,12 +71,20 @@ export default function App() {
     avgFeedings: number;
     avgPees: number;
     avgPoops: number;
-    trends: { feedings: number; pees: number; poops: number };
+    trends: { feedings: number; pees: number; poops: number; photos?: number };
     days: string[];
     dailyFeedings: number[];
     dailyPees: number[];
     dailyPoops: number[];
+    photos?: number;
+    avgPhotos?: number;
+    dailyPhotos?: number[];
   } | null>(null);
+
+  // Photos
+  const [, setPhotoLoading] = useState(false);
+  const [todaysPhoto, setTodaysPhoto] = useState<{ id: string; photo_date: string; photo_path: string; photo_url?: string } | null>(null);
+  const [allPhotos, setAllPhotos] = useState<Array<{ id: string; photo_date: string; photo_path: string; photo_url?: string }>>([]);
 
   const currentDateKey = getDateKey(currentDate);
 
@@ -89,6 +97,31 @@ export default function App() {
     loadStats();
     loadLatestFeeding();
   }, [currentDateKey, authenticated]);
+
+  // load today's photo for dashboard badge
+  useEffect(() => {
+    if (!authenticated) return;
+    const todayKey = getDateKey(new Date());
+    (async () => {
+      const rec = await getPhotoRecordForDate(todayKey);
+      if (!rec) {
+        setTodaysPhoto(null);
+        return;
+      }
+      const signed = await getSignedUrlForPath(rec.photo_path);
+      setTodaysPhoto({ id: rec.id, photo_date: rec.photo_date, photo_path: rec.photo_path, photo_url: signed });
+    })();
+  }, [authenticated]);
+
+  // (photos view uses gallery loader)
+
+  // load all photos when Photos view active
+  useEffect(() => {
+    if (!authenticated) return;
+    if (activeView !== 'photos') return;
+    loadAllPhotos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, authenticated]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -274,6 +307,27 @@ export default function App() {
       poops: countsByDate[lastDay].poops - countsByDate[prevDay].poops,
     };
 
+    // photo stats for same date range
+    const { data: photosData } = await supabase
+      .from('daily_photos')
+      .select('*')
+      .gte('photo_date', startKey)
+      .lte('photo_date', endKey)
+      .order('photo_date', { ascending: true });
+
+    const photoRows = photosData ?? [];
+    const countsByDatePhotos: Record<string, number> = {};
+    days.forEach((d) => (countsByDatePhotos[d] = 0));
+    photoRows.forEach((r: any) => {
+      if (countsByDatePhotos[r.photo_date] === undefined) countsByDatePhotos[r.photo_date] = 0;
+      countsByDatePhotos[r.photo_date]++;
+    });
+
+    const dailyPhotos = days.map((d) => countsByDatePhotos[d] ?? 0);
+    const photoTotals = dailyPhotos.reduce((s, v) => s + v, 0);
+    const avgPhotos = Math.round((photoTotals / 7) * 10) / 10;
+    // photos trend computed inline when building stats below
+
     setStats({
       feedings: totals.feedings,
       pees: totals.pees,
@@ -282,12 +336,84 @@ export default function App() {
       avgFeedings,
       avgPees,
       avgPoops,
-      trends,
+      trends: {
+        ...trends,
+        photos: (countsByDatePhotos[lastDay] ?? 0) - (countsByDatePhotos[prevDay] ?? 0)
+      },
       days,
       dailyFeedings,
       dailyPees,
       dailyPoops,
+      photos: photoTotals,
+      avgPhotos,
+      dailyPhotos,
     });
+  }
+
+  // --- Photos helpers ---
+  async function getPhotoRecordForDate(dateKey: string) {
+    const { data, error } = await supabase
+      .from("daily_photos")
+      .select("*")
+      .eq("photo_date", dateKey)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error loading photo record:", error);
+      return null;
+    }
+    return data as any;
+  }
+
+  async function getSignedUrlForPath(path: string) {
+    try {
+      const { data } = await supabase.storage.from("daily-photos").createSignedUrl(path, 60 * 60);
+      return (data as any)?.signedUrl ?? null;
+    } catch (e) {
+      console.error("signed url error", e);
+      return null;
+    }
+  }
+
+  
+
+  async function uploadPhotoForDate(file: File, dateKey: string) {
+    setPhotoLoading(true);
+    try {
+      const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf('.')) : '.jpg';
+      const path = `${dateKey}${ext}`;
+      const up = await supabase.storage.from('daily-photos').upload(path, file, { upsert: true });
+      if (up.error) throw up.error;
+
+      // upsert DB record
+      const now = new Date().toISOString();
+      const { data, error } = await supabase.from('daily_photos').upsert({ photo_date: dateKey, photo_path: path, photo_url: path, created_at: now }, { onConflict: 'photo_date' }).select().maybeSingle();
+      if (error) throw error;
+      const signed = await getSignedUrlForPath(path);
+      const rec = { id: data?.id ?? '', photo_date: dateKey, photo_path: path, photo_url: signed };
+      // update states
+      if (dateKey === getDateKey(new Date())) setTodaysPhoto(rec);
+      // insert a photo event so it appears in today's events like other events
+      try {
+        await supabase.from('events').insert({ event_type: 'photo', event_time: now, event_date: dateKey });
+      } catch (e) {
+        console.error('failed to insert photo event', e);
+      }
+      // refresh gallery and event lists
+      await loadAllPhotos();
+      if (dateKey === currentDateKey) {
+        await loadEvents();
+        await loadTodaysEvents();
+        await loadLatestFeeding();
+      }
+      return rec;
+    } catch (e) {
+      console.error('upload photo failed', e);
+      throw e;
+    } finally {
+      setPhotoLoading(false);
+    }
   }
 
   async function addEvent(type: EventType) {
@@ -376,6 +502,8 @@ export default function App() {
         return "💧";
       case "feeding":
         return "🍼";
+      case "photo":
+        return "📷";
     }
   };
 
@@ -394,14 +522,7 @@ export default function App() {
     return `${hours} h ${remainingMinutes} min sitten`;
   }
 
-  function formatDurationMs(ms: number) {
-    if (ms < 60000) return "0 min";
-    const minutes = Math.floor(ms / 60000);
-    if (minutes < 60) return `${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    const rem = minutes % 60;
-    return `${hours} h ${rem} min`;
-  }
+  // (formatDurationMs removed — not needed)
 
   function formatRemainingMs(ms: number) {
     const minutes = Math.ceil(ms / 60000);
@@ -413,14 +534,7 @@ export default function App() {
     return `${rem} ${mLabel}`;
   }
 
-  function computeAvgIntervalToday(): string | null {
-    const feedings = todaysEvents.filter((e) => e.type === "feeding").map((e) => new Date(e.timestamp).getTime()).sort((a, b) => a - b);
-    if (feedings.length < 2) return null;
-    const diffs: number[] = [];
-    for (let i = 1; i < feedings.length; i++) diffs.push(feedings[i] - feedings[i - 1]);
-    const avg = diffs.reduce((s, v) => s + v, 0) / diffs.length;
-    return formatDurationMs(Math.round(avg));
-  }
+  // (avg interval calculation removed — not used in UI per UX changes)
 
   const renderCard = (
     emoji: string,
@@ -467,12 +581,17 @@ export default function App() {
                   const stateClass = remainingMs === 0 ? "overdue" : remainingMs < 60 * 60 * 1000 ? "soon" : "ok";
                   const icon = stateClass === "overdue" ? "🚨" : stateClass === "soon" ? "🔔" : "🕒";
 
+                  const nextTime = new Date(new Date(lastFeeding.timestamp).getTime() + threeH).toISOString();
+
                   return (
                     <div className={`remaining-pill ${stateClass} top`}> 
                       <div className="remaining-header">
                         <span className="remaining-icon">{icon}</span>
-                        <div className="remaining-text">
-                          {remainingMs === 0 ? "Aika imetykseen: HETI" : `Aikaa seuraavaan: ${formatRemainingMs(remainingMs)}`}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <div className="remaining-text">
+                            {remainingMs === 0 ? "Aika imetykseen: HETI" : `Aikaa seuraavaan: ${formatRemainingMs(remainingMs)}`}
+                          </div>
+                          <div className="remaining-clock">Klo {formatTime(nextTime)}</div>
                         </div>
                       </div>
                       <div className="remaining-progress" aria-hidden>
@@ -481,13 +600,7 @@ export default function App() {
                     </div>
                   );
                 })()}
-
-                <div className="feeding-header">🍼 Viimeisin imetys</div>
-                <div className="elapsed-time">{formatDurationMs(elapsedMs ?? 0)} sitten</div>
-                <div className="last-time">Viimeksi klo {formatTime(lastFeeding.timestamp)}</div>
-                {computeAvgIntervalToday() && (
-                  <div className="avg-interval">Keskiväli tänään: {computeAvgIntervalToday()}</div>
-                )}
+                {/* removed duplicate 'Viimeisin imetys' block per UX request */}
               </div>
             )}
 
@@ -498,6 +611,95 @@ export default function App() {
       </div>
     );
   };
+
+  const renderPhotoCard = () => {
+    const has = todaysPhoto !== null;
+
+    return (
+      <div className="card" style={{ background: '#fff0f6' }}>
+        <div className="card-header">
+          <span className="card-emoji">📷</span>
+          <span className="card-title">Päivän kuva</span>
+        </div>
+
+        <div className="card-count">
+          {has ? 1 : 0}
+          <span style={{ fontSize: 28, color: '#666' }}> / 1</span>
+        </div>
+
+        <div className="card-meta">
+          {has ? (
+            <div style={{ cursor: 'pointer' }} onClick={() => { openModal(todaysPhoto!); }}>Näytä: {todaysPhoto?.photo_date}</div>
+          ) : (
+            <div style={{ color: '#888', fontWeight: 700 }}>⚠️ Tämän päivän kuva puuttuu</div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          {has ? (
+            <img src={todaysPhoto?.photo_url ?? ''} alt="today" className="photo-thumbnail" onClick={() => openModal(todaysPhoto!)} />
+          ) : null}
+        </div>
+
+        <div className="card-actions">
+          <PhotoUploader dateKey={getDateKey(new Date())} onDone={async () => { await loadAllPhotos(); }} />
+        </div>
+      </div>
+    );
+  };
+
+  // modal state for photo preview
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalPhoto, setModalPhoto] = useState<{ id: string; photo_date: string; photo_path: string; photo_url?: string } | null>(null);
+
+  function openModal(p: { id: string; photo_date: string; photo_path: string; photo_url?: string }) {
+    setModalPhoto(p);
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    setModalPhoto(null);
+  }
+
+  async function loadAllPhotos() {
+    try {
+      const { data, error } = await supabase.from('daily_photos').select('*').order('photo_date', { ascending: true });
+      if (error) {
+        console.error('loadAllPhotos error', error);
+        setAllPhotos([]);
+        return;
+      }
+
+      const rows = data ?? [];
+      const out: Array<{ id: string; photo_date: string; photo_path: string; photo_url?: string }> = [];
+      for (const r of rows) {
+        const url = await getSignedUrlForPath(r.photo_path);
+        out.push({ id: r.id, photo_date: r.photo_date, photo_path: r.photo_path, photo_url: url });
+      }
+      setAllPhotos(out);
+    } catch (e) {
+      console.error('loadAllPhotos failed', e);
+      setAllPhotos([]);
+    }
+  }
+
+  // Shared upload UI component (reused by dashboard and gallery modal)
+  function PhotoUploader({ dateKey, onDone }: { dateKey: string; onDone?: (rec: any) => void }) {
+    return (
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center' }}>
+        <label className="uploader-btn" style={{ cursor: 'pointer' }}>
+          📷 Lisää kuva
+          <input style={{ display: 'none' }} type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const rec = await uploadPhotoForDate(f, dateKey); onDone?.(rec); } }} />
+        </label>
+
+        <label className="uploader-btn" style={{ cursor: 'pointer' }}>
+          📸 Ota kuva
+          <input style={{ display: 'none' }} type="file" accept="image/*" capture="environment" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const rec = await uploadPhotoForDate(f, dateKey); onDone?.(rec); } }} />
+        </label>
+      </div>
+    );
+  }
 
   // If not authenticated, show lock screen only
   if (!authenticated) {
@@ -569,9 +771,10 @@ export default function App() {
         <div className="view-tabs">
           <button className={`tab-button ${activeView === "dashboard" ? "active" : ""}`} onClick={() => setActiveView("dashboard")}>Yleiskuva</button>
           <button className={`tab-button ${activeView === "stats" ? "active" : ""}`} onClick={() => setActiveView("stats")}>Tilastot</button>
+          <button className={`tab-button ${activeView === "photos" ? "active" : ""}`} onClick={() => setActiveView("photos")}>Kuvat</button>
         </div>
 
-        {activeView === "dashboard" ? (
+        {activeView === "dashboard" && (
           <>
             <div className="card" style={{ background: "#f8fafc" }}>
               <div className="card-header">
@@ -595,6 +798,13 @@ export default function App() {
                   <div className="summary-icon">💩</div>
                   <div className="summary-count">{todaysCounts.poops}</div>
                   <div className="summary-label">Kakat</div>
+                </div>
+
+                <div className="summary-item">
+                  <div className="summary-icon">📷</div>
+                  <div className="summary-count">{todaysPhoto ? 1 : 0}</div>
+                  <div className="summary-label">Kuvat</div>
+                  {todaysPhoto && <img src={todaysPhoto.photo_url} alt="päivän kuva" className="summary-photo-thumb" />}
                 </div>
               </div>
 
@@ -629,6 +839,8 @@ export default function App() {
               "#fff3df",
               "poop"
             )}
+
+            {renderPhotoCard()}
 
             <div className="events-panel">
               <button onClick={() => setShowEvents(!showEvents)} className="toggle-events">📋 Päivän tapahtumat</button>
@@ -666,7 +878,8 @@ export default function App() {
               </button>
             </div>
           </>
-        ) : (
+        )}
+        {activeView === 'stats' && (
           <div className="card" style={{ background: "#fff" }}>
             <div className="card-header">
               <span className="card-title">Tilastot (viimeiset 7 päivää)</span>
@@ -730,6 +943,24 @@ export default function App() {
                     </div>
                     <div className={`trend ${stats.trends.poops > 0 ? 'trend-up' : stats.trends.poops < 0 ? 'trend-down' : ''}`}>{stats.trends.poops > 0 ? `▲ +${stats.trends.poops}` : stats.trends.poops < 0 ? `▼ ${Math.abs(stats.trends.poops)}` : `–`}</div>
                   </div>
+
+                    <div className="stat-card">
+                      <div className="stat-top">
+                        <div className="stat-emoji">📷</div>
+                        <div className="stat-value">{stats.photos ?? 0}</div>
+                      </div>
+                      <div className="stat-label">Kuvat • {stats.avgPhotos}/7pv</div>
+                      <div className="sparkline" aria-hidden>
+                        {(() => {
+                          const arr = stats.dailyPhotos ?? [];
+                          const max = Math.max(...arr, 1);
+                          return arr.map((v, i) => (
+                            <div key={i} className="spark-bar" style={{ height: `${(v / max) * 100}%`, background: `linear-gradient(180deg,#f0abfc,#7c3aed)` }} />
+                          ));
+                        })()}
+                      </div>
+                      <div className={`trend ${((stats.trends as any).photos ?? 0) > 0 ? 'trend-up' : ((stats.trends as any).photos ?? 0) < 0 ? 'trend-down' : ''}`}>{((stats.trends as any).photos ?? 0) > 0 ? `▲ +${((stats.trends as any).photos ?? 0)}` : ((stats.trends as any).photos ?? 0) < 0 ? `▼ ${Math.abs(((stats.trends as any).photos ?? 0))}` : `–`}</div>
+                    </div>
                 </div>
 
                 <div style={{ marginTop: 12, textAlign: 'center', color: '#555' }}>
@@ -740,6 +971,42 @@ export default function App() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {activeView === 'photos' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0 }}>Kuvat</h3>
+              <PhotoUploader dateKey={getDateKey(new Date())} onDone={async () => { await loadAllPhotos(); }} />
+            </div>
+
+            {allPhotos.length === 0 ? (
+              <div className="card" style={{ textAlign: 'center' }}>
+                <div style={{ padding: 20 }}>Ei kuvia vielä. Käytä Lisää kuva -painiketta lisätäksesi kuvia.</div>
+              </div>
+            ) : (
+              <div className="gallery-grid">
+                {allPhotos.map((p) => (
+                  <div key={p.id} className="gallery-item" onClick={() => openModal(p)} style={{ position: 'relative', cursor: 'pointer' }}>
+                    <img src={p.photo_url} alt={p.photo_date} className="gallery-thumb" />
+                    <div className="photo-overlay">{p.photo_date}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {modalOpen && modalPhoto && (
+          <div className="photo-modal" onClick={() => closeModal()}>
+            <div className="photo-modal-inner" onClick={(e) => e.stopPropagation()}>
+              <img src={modalPhoto.photo_url} alt={modalPhoto.photo_date} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8 }} />
+              <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontWeight: 700 }}>{modalPhoto.photo_date}</div>
+                <div><PhotoUploader dateKey={modalPhoto.photo_date} onDone={async () => { await loadAllPhotos(); const rec = await getPhotoRecordForDate(modalPhoto.photo_date); if (rec) { const url = await getSignedUrlForPath(rec.photo_path); setTodaysPhoto({ id: rec.id, photo_date: rec.photo_date, photo_path: rec.photo_path, photo_url: url }); } }} /></div>
+              </div>
+              <div style={{ marginTop: 8, textAlign: 'right' }}><button onClick={() => closeModal()} className="circle-btn remove">Sulje</button></div>
+            </div>
           </div>
         )}
       </div>

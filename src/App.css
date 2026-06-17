@@ -339,6 +339,17 @@ body { background: linear-gradient(180deg,#f8f9ff 0%,#f2f6ff 100%); }
 .age-container > div { width: 100%; max-width: 320px; }
 .birth-input { width: 160px; }
 
+/* Lock screen */
+.lock-screen { display:flex; align-items:center; justify-content:center; min-height: 60vh; padding: 40px 12px; }
+.lock-card { width: 100%; max-width: 420px; background: linear-gradient(180deg,#fff,#fbfbff); border-radius: 16px; padding: 28px; box-shadow: 0 12px 40px rgba(2,6,23,0.08); text-align: center; }
+.lock-prompt { margin-top: 8px; color: var(--muted); font-size: 16px; }
+.pin-input { margin-top: 16px; width: 100%; padding: 14px 12px; font-size: 22px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.06); text-align: center; }
+.unlock-btn { margin-top: 14px; width: 100%; padding: 12px; font-size: 18px; border-radius: 10px; background: #111827; color: #fff; border: none; cursor: pointer; }
+.pin-error { margin-top: 10px; color: #dc2626; font-weight: 700; }
+
+/* small lock action button in header */
+.lock-action { padding: 8px 10px; font-size: 18px; margin-left: 8px; }
+
 /* Tabs */
 .view-tabs { display:flex; gap:8px; justify-content:center; margin:12px 0; }
 .tab-button { background: transparent; border: 1px solid transparent; padding: 8px 12px; border-radius: 10px; cursor: pointer; }

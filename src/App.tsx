@@ -31,6 +31,17 @@ function getDateKey(date: Date) {
 }
 
 export default function App() {
+  const AUTH_KEY = "imiisa_authenticated";
+  const [authenticated, setAuthenticated] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(AUTH_KEY) === "true";
+    } catch (e) {
+      return false;
+    }
+  });
+  const [pinInput, setPinInput] = useState<string>("");
+  const [pinError, setPinError] = useState<string | null>(null);
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showEvents, setShowEvents] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
@@ -58,19 +69,49 @@ export default function App() {
 
   const currentDateKey = getDateKey(currentDate);
 
-  // run loaders when current date key changes
+  // run loaders when current date key changes, but only after authentication
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    if (!authenticated) return;
     loadEvents();
     loadTodaysEvents();
     loadStats();
     loadLatestFeeding();
-  }, [currentDateKey]);
+  }, [currentDateKey, authenticated]);
 
   useEffect(() => {
+    if (!authenticated) return;
     const t = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(t);
-  }, []);
+  }, [authenticated]);
+
+  function logout() {
+    try {
+      localStorage.removeItem(AUTH_KEY);
+    } catch (e) {
+      // ignore
+    }
+    setAuthenticated(false);
+    setPinInput("");
+    setPinError(null);
+  }
+
+  function handleUnlock() {
+    // single shared PIN
+    const PIN = "1306";
+    if (pinInput.trim() === PIN) {
+      try {
+        localStorage.setItem(AUTH_KEY, "true");
+      } catch (e) {
+        // ignore storage errors
+      }
+      setAuthenticated(true);
+      setPinInput("");
+      setPinError(null);
+    } else {
+      setPinError("Väärä PIN");
+    }
+  }
 
   // birthIso is initialized from localStorage lazily above
 
@@ -424,12 +465,11 @@ export default function App() {
                   const icon = stateClass === "overdue" ? "🚨" : stateClass === "soon" ? "🔔" : "🕒";
 
                   return (
-                    <div className={`remaining-pill ${stateClass} top`}>
+                    <div className={`remaining-pill ${stateClass} top`}> 
                       <div className="remaining-header">
                         <span className="remaining-icon">{icon}</span>
-                        <div>
-                          <div className="remaining-label">Aikaa seuraavaan</div>
-                          <div className="remaining-value">{remainingMs === 0 ? "HETI" : formatRemainingMs(remainingMs)}</div>
+                        <div className="remaining-text">
+                          {remainingMs === 0 ? "Aika imetykseen: HETI" : `Aikaa seuraavaan: ${formatRemainingMs(remainingMs)}`}
                         </div>
                       </div>
                       <div className="remaining-progress" aria-hidden>
@@ -455,6 +495,34 @@ export default function App() {
       </div>
     );
   };
+
+  // If not authenticated, show lock screen only
+  if (!authenticated) {
+    return (
+      <div className="app-root">
+        <div className="container">
+          <div className="lock-screen">
+            <div className="lock-card">
+              <div className="page-title">👶 iMiisa</div>
+              <div className="lock-prompt">Anna PIN</div>
+              <input
+                inputMode="numeric"
+                pattern="[0-9]*"
+                className="pin-input"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleUnlock(); }}
+                aria-label="PIN"
+                autoFocus
+              />
+              <button className="unlock-btn" onClick={handleUnlock}>Avaa</button>
+              {pinError && <div className="pin-error">{pinError}</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-root">
@@ -484,6 +552,8 @@ export default function App() {
           >
             →
           </button>
+
+          <button onClick={logout} className="nav-button lock-action" title="Lukitse">🔒</button>
         </div>
 
         <div className="safety-banner" style={{ background: safetyOk ? "#22c55e" : "#ef4444" }}>

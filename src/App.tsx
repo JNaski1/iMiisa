@@ -506,7 +506,8 @@ export default function App() {
         <div className="container">
           <div className="lock-screen">
             <div className="lock-card">
-              <div className="page-title">👶 iMiisa</div>
+              <img src="/avatar.jpg" alt="Miisa" className="brand-avatar lock-avatar" />
+              <div className="page-title">iMiisa</div>
               <div className="lock-prompt">Anna PIN</div>
               <input
                 inputMode="numeric"
@@ -542,7 +543,10 @@ export default function App() {
           </button>
 
           <div style={{ textAlign: "center" }}>
-            <div className="page-title">👶 iMiisa</div>
+            <div className="brand">
+              <img src="/avatar.jpg" alt="Miisa" className="brand-avatar" />
+              <div className="page-title">iMiisa</div>
+            </div>
             <div className="date-text">{formatDate(currentDate)}</div>
 
             <div className="age-container">

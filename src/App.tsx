@@ -563,7 +563,7 @@ export default function App() {
         </div>
 
         <div className="safety-banner" style={{ background: safetyOk ? "#22c55e" : "#ef4444" }}>
-          <h2>{safetyOk ? "😊 Turvamerkit täyttyvät" : "⚠️ Turvamerkit eivät täyty"}</h2>
+          <h2>{safetyOk ? "😊 Toimenpidemäärät täyttyvät" : "⚠️ Toimenpidemäärät eivät täyty"}</h2>
         </div>
 
         <div className="view-tabs">

@@ -506,7 +506,7 @@ export default function App() {
         <div className="container">
           <div className="lock-screen">
             <div className="lock-card">
-              <img src="/avatar.jpg" alt="Miisa" className="brand-avatar lock-avatar" />
+              <img src="/avatar.jpg" alt="Miisa" className="brand-avatar lock-avatar" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/avatar.svg'; }} />
               <div className="page-title">iMiisa</div>
               <div className="lock-prompt">Anna PIN</div>
               <input
@@ -544,7 +544,7 @@ export default function App() {
 
           <div style={{ textAlign: "center" }}>
             <div className="brand">
-              <img src="/avatar.jpg" alt="Miisa" className="brand-avatar" />
+              <img src="/avatar.jpg" alt="Miisa" className="brand-avatar" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/avatar.svg'; }} />
               <div className="page-title">iMiisa</div>
             </div>
             <div className="date-text">{formatDate(currentDate)}</div>

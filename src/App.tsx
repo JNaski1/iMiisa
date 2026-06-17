@@ -692,11 +692,6 @@ export default function App() {
           📷 Lisää kuva
           <input style={{ display: 'none' }} type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const rec = await uploadPhotoForDate(f, dateKey); onDone?.(rec); } }} />
         </label>
-
-        <label className="uploader-btn" style={{ cursor: 'pointer' }}>
-          📸 Ota kuva
-          <input style={{ display: 'none' }} type="file" accept="image/*" capture="environment" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const rec = await uploadPhotoForDate(f, dateKey); onDone?.(rec); } }} />
-        </label>
       </div>
     );
   }

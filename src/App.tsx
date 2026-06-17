@@ -424,11 +424,12 @@ export default function App() {
                   const icon = stateClass === "overdue" ? "🚨" : stateClass === "soon" ? "🔔" : "🕒";
 
                   return (
-                    <div className={`remaining-pill ${stateClass} top`}> 
+                    <div className={`remaining-pill ${stateClass} top`}>
                       <div className="remaining-header">
                         <span className="remaining-icon">{icon}</span>
-                        <div className="remaining-text">
-                          {remainingMs === 0 ? "Aika imetykseen: HETI" : `Aikaa seuraavaan: ${formatRemainingMs(remainingMs)}`}
+                        <div>
+                          <div className="remaining-label">Aikaa seuraavaan</div>
+                          <div className="remaining-value">{remainingMs === 0 ? "HETI" : formatRemainingMs(remainingMs)}</div>
                         </div>
                       </div>
                       <div className="remaining-progress" aria-hidden>

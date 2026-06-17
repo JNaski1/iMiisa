@@ -309,14 +309,15 @@
 /* when placed at top of feeding card, span full width and stand out */
 .remaining-pill.top {
   box-sizing: border-box;
-  /* span the card horizontally but remain visually contained */
-  width: calc(100% + 44px);
-  margin: 0 -22px 12px;
-  padding: 12px 22px;
-  border-radius: 14px 14px 12px 12px;
+  /* keep the pill within the card padding so it doesn't visually overflow */
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 12px;
+  border-radius: 12px;
 }
 .remaining-pill.top.ok { background: linear-gradient(180deg,#dcfce7,#bbf7d0); }
-.remaining-pill.top .remaining-text { font-size: 18px; }
+.remaining-pill.top .remaining-label { font-size: 14px; font-weight: 400; color: #0f172a; }
+.remaining-pill.top .remaining-value { font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 2px; }
 
 /* Events */
 .events-list { margin-top: 16px; }

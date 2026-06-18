@@ -87,6 +87,7 @@ export default function App() {
   const [allPhotos, setAllPhotos] = useState<Array<{ id: string; photo_date: string; photo_path: string; photo_url?: string }>>([]);
   const [photoStatus, setPhotoStatus] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  
 
   const currentDateKey = getDateKey(currentDate);
 
@@ -103,9 +104,9 @@ export default function App() {
   // load today's photo for dashboard badge
   useEffect(() => {
     if (!authenticated) return;
-    const todayKey = getDateKey(new Date());
+    const dateKey = currentDateKey;
     (async () => {
-      const rec = await getPhotoRecordForDate(todayKey);
+      const rec = await getPhotoRecordForDate(dateKey);
       if (!rec) {
         setTodaysPhoto(null);
         return;
@@ -113,7 +114,7 @@ export default function App() {
       const signed = await getSignedUrlForPath(rec.photo_path);
       setTodaysPhoto({ id: rec.id, photo_date: rec.photo_date, photo_path: rec.photo_path, photo_url: signed });
     })();
-  }, [authenticated]);
+  }, [authenticated, currentDateKey]);
 
   // (photos view uses gallery loader)
 
@@ -197,16 +198,16 @@ export default function App() {
   }
 
   async function loadTodaysEvents() {
-    const todayKey = getDateKey(new Date());
+    const dateKey = currentDateKey;
 
     const { data, error } = await supabase
       .from("events")
       .select("*")
-      .eq("event_date", todayKey)
+      .eq("event_date", dateKey)
       .order("event_time", { ascending: true });
 
     if (error) {
-      console.error("Virhe ladattaessa tämän päivän tapahtumia:", error);
+      console.error("Virhe ladattaessa valitun päivän tapahtumia:", error);
       return;
     }
 
@@ -396,7 +397,8 @@ export default function App() {
       console.log('[PHOTO_UPLOAD_RESPONSE]', { response: up });
       if (up.error) {
         console.error('[PHOTO_UPLOAD_ERROR]', up.error);
-        setPhotoError(`Storage upload failed: ${up.error.message || up.error.toString()}`);
+        const msg = up.error.message || String(up.error);
+        setPhotoError(`Storage upload failed: ${msg}`);
         setPhotoStatus(null);
         throw up.error;
       }
@@ -410,16 +412,21 @@ export default function App() {
       console.log('[DB_UPSERT_RESPONSE]', { data, error });
       if (error) {
         console.error('[DB_UPSERT_ERROR]', error);
-        setPhotoError(`Database upsert failed: ${error.message || error.toString()}`);
+        const msg = error.message || String(error);
+        setPhotoError(`Database upsert failed: ${msg}`);
         setPhotoStatus(null);
         throw error;
       }
       setPhotoStatus('[DB_UPSERT_COMPLETED]');
       const signed = await getSignedUrlForPath(path);
       console.log('[SIGNED_URL]', { path, signed });
+      if (!signed) {
+        const msg = 'createSignedUrl returned null';
+        console.warn('[SIGNED_URL_ERROR]', msg);
+      }
       const rec = { id: data?.id ?? '', photo_date: dateKey, photo_path: path, photo_url: signed };
       // update states
-      if (dateKey === getDateKey(new Date())) setTodaysPhoto(rec);
+      if (dateKey === currentDateKey) setTodaysPhoto(rec);
       // insert a photo event so it appears in today's events like other events
       try {
         await supabase.from('events').insert({ event_type: 'photo', event_time: now, event_date: dateKey });
@@ -673,8 +680,8 @@ export default function App() {
           ) : null}
         </div>
 
-        <div className="card-actions">
-          <PhotoUploader dateKey={getDateKey(new Date())} onDone={async () => { await loadAllPhotos(); }} />
+            <div className="card-actions">
+          <PhotoUploader dateKey={currentDateKey} onDone={async () => { await loadAllPhotos(); }} />
         </div>
       </div>
     );
@@ -1007,7 +1014,7 @@ export default function App() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ margin: 0 }}>Kuvat</h3>
-              <PhotoUploader dateKey={getDateKey(new Date())} onDone={async () => { await loadAllPhotos(); }} />
+              <PhotoUploader dateKey={currentDateKey} onDone={async () => { await loadAllPhotos(); }} />
             </div>
 
             {allPhotos.length === 0 ? (

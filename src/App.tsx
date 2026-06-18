@@ -413,8 +413,9 @@ export default function App() {
       const rec = { id: data?.id ?? '', photo_date: dateKey, photo_path: path, photo_url: signed };
       if (dateKey === currentDateKey) setTodaysPhoto(rec);
 
-      // insert a photo event for today's timeline (best-effort)
+      // ensure there's only one photo event per date: remove existing and insert a single photo event
       try {
+        await supabase.from('events').delete().eq('event_type', 'photo').eq('event_date', dateKey);
         await supabase.from('events').insert({ event_type: 'photo', event_time: now, event_date: dateKey });
       } catch (e) {
         // ignore
@@ -456,8 +457,11 @@ export default function App() {
         setPhotoError('Kuvan poisto epäonnistui.');
         throw remErr;
       }
-      // remove DB record
+      // remove DB record and any photo event
       const { error: dbErr } = await supabase.from('daily_photos').delete().eq('photo_date', dateKey);
+      try {
+        await supabase.from('events').delete().eq('event_type', 'photo').eq('event_date', dateKey);
+      } catch (_) {}
       if (dbErr) {
         setPhotoError('Kuvan poisto tietokannasta epäonnistui.');
         throw dbErr;
@@ -908,12 +912,12 @@ export default function App() {
                     <div className="events-list">
                       {sortedEvents.map((event, idx) => {
                         const ordinal = sortedEvents.slice(0, idx + 1).filter((e) => e.type === event.type).length;
-                        const typeLabel = event.type === "feeding" ? "imetys" : event.type === "poop" ? "kakka" : "pissa";
+                        const typeLabel = event.type === "feeding" ? "imetys" : event.type === "poop" ? "kakka" : event.type === "photo" ? "Päivän kuva" : "pissa";
 
                         return (
                           <div key={event.id} className="event-item">
                             <span className="event-icon">{iconForType(event.type)}</span>
-                            <span className="event-label">Päivän {ordinal}. {typeLabel}</span>
+                            <span className="event-label">{event.type === 'photo' ? typeLabel : `Päivän ${ordinal}. ${typeLabel}`}</span>
                             <span className="event-time">{formatTime(event.timestamp)}</span>
                           </div>
                         );

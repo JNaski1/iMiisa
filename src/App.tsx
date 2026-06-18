@@ -82,10 +82,10 @@ export default function App() {
   } | null>(null);
 
   // Photos
-  const [, setPhotoLoading] = useState(false);
+  const [photoLoading, setPhotoLoading] = useState(false);
   const [todaysPhoto, setTodaysPhoto] = useState<{ id: string; photo_date: string; photo_path: string; photo_url?: string } | null>(null);
   const [allPhotos, setAllPhotos] = useState<Array<{ id: string; photo_date: string; photo_path: string; photo_url?: string }>>([]);
-  const [photoStatus, setPhotoStatus] = useState<string | null>(null);
+  const [photoMessage, setPhotoMessage] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   
 
@@ -384,74 +384,91 @@ export default function App() {
   async function uploadPhotoForDate(file: File, dateKey: string) {
     setPhotoLoading(true);
     setPhotoError(null);
-    setPhotoStatus('[PHOTO_SELECTED] file=' + (file && file.name));
-    console.log('[PHOTO_SELECTED]', { fileName: file?.name, size: file?.size, type: file?.type, dateKey });
+    setPhotoMessage(null);
     try {
       const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf('.')) : '.jpg';
       const path = `${dateKey}${ext}`;
       const bucket = 'daily-photos';
-      setPhotoStatus('[PHOTO_UPLOAD_START]');
-      console.log('[PHOTO_UPLOAD_START]', { bucket, path });
+      setPhotoMessage('Ladataan...');
 
       const up = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
-      console.log('[PHOTO_UPLOAD_RESPONSE]', { response: up });
       if (up.error) {
-        console.error('[PHOTO_UPLOAD_ERROR]', up.error);
-        const msg = up.error.message || String(up.error);
-        setPhotoError(`Storage upload failed: ${msg}`);
-        setPhotoStatus(null);
+        setPhotoError('Kuvan lataus epäonnistui. Yritä uudelleen.');
+        setPhotoMessage(null);
         throw up.error;
       }
-      setPhotoStatus('[PHOTO_UPLOAD_COMPLETED]');
 
-      // upsert DB record
+      // upsert DB record (replaces existing day record)
       const now = new Date().toISOString();
-      setPhotoStatus('[DB_UPSERT_START]');
-      console.log('[DB_UPSERT_START]', { table: 'daily_photos', values: { photo_date: dateKey, photo_path: path, photo_url: path, created_at: now } });
       const { data, error } = await supabase.from('daily_photos').upsert({ photo_date: dateKey, photo_path: path, photo_url: path, created_at: now }, { onConflict: 'photo_date' }).select().maybeSingle();
-      console.log('[DB_UPSERT_RESPONSE]', { data, error });
       if (error) {
-        console.error('[DB_UPSERT_ERROR]', error);
-        const msg = error.message || String(error);
-        setPhotoError(`Database upsert failed: ${msg}`);
-        setPhotoStatus(null);
+        setPhotoError('Tallennus epäonnistui. Yritä uudelleen.');
+        setPhotoMessage(null);
         throw error;
       }
-      setPhotoStatus('[DB_UPSERT_COMPLETED]');
+
       const signed = await getSignedUrlForPath(path);
-      console.log('[SIGNED_URL]', { path, signed });
-      if (!signed) {
-        const msg = 'createSignedUrl returned null';
-        console.warn('[SIGNED_URL_ERROR]', msg);
-      }
+      if (!signed) setPhotoError('Kuvan käsittely epäonnistui.');
+
       const rec = { id: data?.id ?? '', photo_date: dateKey, photo_path: path, photo_url: signed };
-      // update states
       if (dateKey === currentDateKey) setTodaysPhoto(rec);
-      // insert a photo event so it appears in today's events like other events
+
+      // insert a photo event for today's timeline (best-effort)
       try {
         await supabase.from('events').insert({ event_type: 'photo', event_time: now, event_date: dateKey });
       } catch (e) {
-        console.error('failed to insert photo event', e);
+        // ignore
       }
-      // refresh gallery and event lists
-      setPhotoStatus('[GALLERY_REFRESH_START]');
-      console.log('[GALLERY_REFRESH_START]');
+
+      // refresh gallery
+      setPhotoMessage(null);
       await loadAllPhotos();
-      console.log('[GALLERY_REFRESH_COMPLETED]');
-      setPhotoStatus('[UPLOAD_FLOW_COMPLETED]');
+      setPhotoMessage('Kuva tallennettu');
+
       if (dateKey === currentDateKey) {
         await loadEvents();
         await loadTodaysEvents();
         await loadLatestFeeding();
       }
+
       return rec;
     } catch (e) {
       console.error('upload photo failed', e);
-      if (!photoError) setPhotoError(e instanceof Error ? e.message : String(e));
-      setPhotoStatus(null);
+      if (!photoError) setPhotoError('Tapahtui virhe. Yritä myöhemmin.');
+      setPhotoMessage(null);
       throw e;
     } finally {
       setPhotoLoading(false);
+    }
+  }
+
+  // Delete photo for a date: remove storage file and DB record
+  async function deletePhotoForDate(dateKey: string) {
+    try {
+      const rec = await getPhotoRecordForDate(dateKey);
+      if (!rec) {
+        setPhotoError('Kuvaa ei löytynyt.');
+        return;
+      }
+      // remove storage object
+      const { error: remErr } = await supabase.storage.from('daily-photos').remove([rec.photo_path]);
+      if (remErr) {
+        setPhotoError('Kuvan poisto epäonnistui.');
+        throw remErr;
+      }
+      // remove DB record
+      const { error: dbErr } = await supabase.from('daily_photos').delete().eq('photo_date', dateKey);
+      if (dbErr) {
+        setPhotoError('Kuvan poisto tietokannasta epäonnistui.');
+        throw dbErr;
+      }
+      if (dateKey === currentDateKey) setTodaysPhoto(null);
+      await loadAllPhotos();
+      setPhotoMessage('Kuva poistettu');
+    } catch (err) {
+      console.error('delete photo failed', err);
+      if (!photoError) setPhotoError('Kuvan poisto epäonnistui. Yritä uudelleen.');
+      throw err;
     }
   }
 
@@ -727,11 +744,11 @@ export default function App() {
   function PhotoUploader({ dateKey, onDone }: { dateKey: string; onDone?: (rec: any) => void }) {
     return (
       <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center' }}>
-        <label className="uploader-btn" style={{ cursor: 'pointer' }}>
+        <label className="uploader-btn" style={{ cursor: photoLoading ? 'default' : 'pointer', opacity: photoLoading ? 0.7 : 1 }}>
           📷 Lisää kuva
-          <input style={{ display: 'none' }} type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const rec = await uploadPhotoForDate(f, dateKey); onDone?.(rec); } }} />
+          <input disabled={photoLoading} style={{ display: 'none' }} type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { try { const rec = await uploadPhotoForDate(f, dateKey); onDone?.(rec); } catch (_) {} } }} />
         </label>
-        {photoStatus && <div className="photo-status">{photoStatus}</div>}
+        {photoMessage && <div className="photo-status">{photoMessage}</div>}
         {photoError && <div className="photo-error">{photoError}</div>}
       </div>
     );
@@ -806,8 +823,8 @@ export default function App() {
 
         <div className="view-tabs">
           <button className={`tab-button ${activeView === "dashboard" ? "active" : ""}`} onClick={() => setActiveView("dashboard")}>Yleiskuva</button>
-          <button className={`tab-button ${activeView === "stats" ? "active" : ""}`} onClick={() => setActiveView("stats")}>Tilastot</button>
           <button className={`tab-button ${activeView === "photos" ? "active" : ""}`} onClick={() => setActiveView("photos")}>Kuvat</button>
+          <button className={`tab-button ${activeView === "stats" ? "active" : ""}`} onClick={() => setActiveView("stats")}>Tilastot</button>
         </div>
 
         {activeView === "dashboard" && (
@@ -1037,9 +1054,19 @@ export default function App() {
           <div className="photo-modal" onClick={() => closeModal()}>
             <div className="photo-modal-inner" onClick={(e) => e.stopPropagation()}>
               <img src={modalPhoto.photo_url} alt={modalPhoto.photo_date} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8 }} />
-              <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                 <div style={{ fontWeight: 700 }}>{modalPhoto.photo_date}</div>
-                <div><PhotoUploader dateKey={modalPhoto.photo_date} onDone={async () => { await loadAllPhotos(); const rec = await getPhotoRecordForDate(modalPhoto.photo_date); if (rec) { const url = await getSignedUrlForPath(rec.photo_path); setTodaysPhoto({ id: rec.id, photo_date: rec.photo_date, photo_path: rec.photo_path, photo_url: url }); } }} /></div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <PhotoUploader dateKey={modalPhoto.photo_date} onDone={async () => { await loadAllPhotos(); const rec = await getPhotoRecordForDate(modalPhoto.photo_date); if (rec) { const url = await getSignedUrlForPath(rec.photo_path); setTodaysPhoto({ id: rec.id, photo_date: rec.photo_date, photo_path: rec.photo_path, photo_url: url }); } }} />
+                  <button className="uploader-btn" style={{ background: '#ef4444' }} onClick={async () => {
+                    const ok = confirm('Haluatko varmasti poistaa kuvan? Tämä toiminto poistaa kuvan pysyvästi.');
+                    if (!ok) return;
+                    try {
+                      await deletePhotoForDate(modalPhoto.photo_date);
+                      closeModal();
+                    } catch (_) {}
+                  }}>🗑️ Poista kuva</button>
+                </div>
               </div>
               <div style={{ marginTop: 8, textAlign: 'right' }}><button onClick={() => closeModal()} className="circle-btn remove">Sulje</button></div>
             </div>

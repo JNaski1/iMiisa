@@ -11,6 +11,12 @@ type Event = {
   date: string;
 };
 
+type Baby = {
+  id: string;
+  name: string;
+  birth_date?: string | null;
+};
+
 function formatDate(date: Date) {
   return date.toLocaleDateString("fi-FI");
 }
@@ -32,6 +38,9 @@ function getDateKey(date: Date) {
 
 export default function App() {
   const AUTH_KEY = "imiisa_authenticated";
+  const BABY_KEY = "imiisa_current_baby";
+  const BABY_ID_KEY = "imiisa_current_baby_id";
+
   const readAuth = () => {
     try {
       return sessionStorage.getItem(AUTH_KEY) === "true";
@@ -49,7 +58,49 @@ export default function App() {
     }
   };
 
-  const [authenticated, setAuthenticated] = useState<boolean>(() => readAuth());
+  const readCurrentBaby = (): Baby | null => {
+    try {
+      const raw = sessionStorage.getItem(BABY_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Baby;
+      if (!parsed?.id) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const readCurrentBabyId = (): string | null => {
+    try {
+      return sessionStorage.getItem(BABY_ID_KEY);
+    } catch {
+      return null;
+    }
+  };
+
+  const writeCurrentBaby = (baby: Baby | null) => {
+    try {
+      if (baby) {
+        sessionStorage.setItem(BABY_KEY, JSON.stringify(baby));
+        sessionStorage.setItem(BABY_ID_KEY, baby.id);
+      } else {
+        sessionStorage.removeItem(BABY_KEY);
+        sessionStorage.removeItem(BABY_ID_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const initialBaby = readCurrentBaby();
+  const initialBabyId = readCurrentBabyId() ?? initialBaby?.id ?? null;
+
+  const [authenticated, setAuthenticated] = useState<boolean>(() => readAuth() && !!initialBabyId);
+  const [currentBaby, setCurrentBaby] = useState<Baby | null>(() => initialBaby);
+  const [currentBabyId, setCurrentBabyId] = useState<string | null>(() => initialBabyId);
+  const [babies, setBabies] = useState<Baby[]>([]);
+  const [selectedBabyId, setSelectedBabyId] = useState<string>(() => initialBabyId ?? "");
+  const [babiesLoading, setBabiesLoading] = useState<boolean>(false);
   const [pinInput, setPinInput] = useState<string>("");
   const [pinError, setPinError] = useState<string | null>(null);
 
@@ -57,8 +108,7 @@ export default function App() {
   const [showEvents, setShowEvents] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
-  // Hard-coded birth date (13.6.26) — keep this value persistent
-  const [birthIso] = useState<string>(() => "2026-06-13");
+  const birthIso = currentBaby?.birth_date ?? null;
   const [todaysEvents, setTodaysEvents] = useState<Event[]>([]);
   const [latestFeeding, setLatestFeeding] = useState<Event | null>(null);
   const [now, setNow] = useState<Date>(new Date());
@@ -94,16 +144,16 @@ export default function App() {
   // run loaders when current date key changes, but only after authentication
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!authenticated) return;
+    if (!authenticated || !currentBabyId) return;
     loadEvents();
     loadTodaysEvents();
     loadStats();
     loadLatestFeeding();
-  }, [currentDateKey, authenticated]);
+  }, [currentDateKey, authenticated, currentBabyId]);
 
   // load today's photo for dashboard badge
   useEffect(() => {
-    if (!authenticated) return;
+    if (!authenticated || !currentBabyId) return;
     const dateKey = currentDateKey;
     (async () => {
       const rec = await getPhotoRecordForDate(dateKey);
@@ -114,17 +164,17 @@ export default function App() {
       const signed = await getSignedUrlForPath(rec.photo_path);
       setTodaysPhoto({ id: rec.id, photo_date: rec.photo_date, photo_path: rec.photo_path, photo_url: signed });
     })();
-  }, [authenticated, currentDateKey]);
+  }, [authenticated, currentDateKey, currentBabyId]);
 
   // (photos view uses gallery loader)
 
   // load all photos when Photos view active
   useEffect(() => {
-    if (!authenticated) return;
+    if (!authenticated || !currentBabyId) return;
     if (activeView !== 'photos') return;
     loadAllPhotos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeView, authenticated]);
+  }, [activeView, authenticated, currentBabyId]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -132,24 +182,111 @@ export default function App() {
     return () => clearInterval(t);
   }, [authenticated]);
 
+  useEffect(() => {
+    if (!authenticated) return;
+    if (currentBabyId) return;
+    writeAuth(false);
+    writeCurrentBaby(null);
+    setAuthenticated(false);
+    setCurrentBaby(null);
+    setCurrentBabyId(null);
+  }, [authenticated, currentBabyId]);
+
+  useEffect(() => {
+    if (authenticated) return;
+
+    (async () => {
+      setBabiesLoading(true);
+      const { data, error } = await supabase
+        .from("babies")
+        .select("id, name, birth_date")
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Virhe ladattaessa vauvalistaa:", error);
+        setBabies([]);
+        setBabiesLoading(false);
+        return;
+      }
+
+      const rows = (data ?? []) as Baby[];
+      setBabies(rows);
+
+      setSelectedBabyId((prev) => {
+        if (prev && rows.some((b) => b.id === prev)) return prev;
+        return rows[0]?.id ?? "";
+      });
+
+      setBabiesLoading(false);
+    })();
+  }, [authenticated]);
+
   function logout() {
     writeAuth(false);
+    writeCurrentBaby(null);
     setAuthenticated(false);
+    setCurrentBaby(null);
+    setCurrentBabyId(null);
     setPinInput("");
     setPinError(null);
+    setEvents([]);
+    setTodaysEvents([]);
+    setLatestFeeding(null);
+    setStats(null);
+    setTodaysPhoto(null);
+    setAllPhotos([]);
   }
 
-  function handleUnlock() {
-    // single shared PIN
-    const PIN = "1306";
-    if (pinInput.trim() === PIN) {
-      writeAuth(true);
-      setAuthenticated(true);
-      setPinInput("");
-      setPinError(null);
-    } else {
-      setPinError("Väärä PIN");
+  async function handleUnlock() {
+    const babyId = selectedBabyId;
+    const pin = pinInput.trim();
+
+    if (!babyId) {
+      setPinError("Valitse vauva");
+      return;
     }
+
+    if (!pin) {
+      setPinError("Anna PIN");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("babies")
+      .select("id, name, birth_date, pin")
+      .eq("id", babyId)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Virhe kirjautumisessa:", error);
+      setPinError("Kirjautuminen epäonnistui. Tarkista, että babies-taulu ja data on luotu.");
+      return;
+    }
+
+    if (!data) {
+      setPinError("Vauvaa ei löytynyt");
+      return;
+    }
+
+    if ((data as any).pin !== pin) {
+      setPinError("Väärä PIN");
+      return;
+    }
+
+    const baby: Baby = {
+      id: data.id,
+      name: data.name,
+      birth_date: data.birth_date,
+    };
+
+    writeCurrentBaby(baby);
+    writeAuth(true);
+    setCurrentBaby(baby);
+    setCurrentBabyId(baby.id);
+    setAuthenticated(true);
+    setPinInput("");
+    setPinError(null);
   }
 
   // birthIso is initialized from localStorage lazily above
@@ -171,11 +308,17 @@ export default function App() {
   }
 
   async function loadEvents() {
+    if (!currentBabyId) {
+      setEvents([]);
+      return;
+    }
+
     setLoading(true);
 
     const { data, error } = await supabase
       .from("events")
       .select("*")
+      .eq("baby_id", currentBabyId)
       .eq("event_date", currentDateKey)
       .order("event_time", { ascending: true });
 
@@ -198,11 +341,17 @@ export default function App() {
   }
 
   async function loadTodaysEvents() {
+    if (!currentBabyId) {
+      setTodaysEvents([]);
+      return;
+    }
+
     const dateKey = currentDateKey;
 
     const { data, error } = await supabase
       .from("events")
       .select("*")
+      .eq("baby_id", currentBabyId)
       .eq("event_date", dateKey)
       .order("event_time", { ascending: true });
 
@@ -223,9 +372,15 @@ export default function App() {
   }
 
   async function loadLatestFeeding() {
+    if (!currentBabyId) {
+      setLatestFeeding(null);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("events")
       .select("*")
+      .eq("baby_id", currentBabyId)
       .eq("event_type", "feeding")
       .order("event_time", { ascending: false })
       .limit(1);
@@ -244,6 +399,11 @@ export default function App() {
   }
 
   async function loadStats() {
+    if (!currentBabyId) {
+      setStats(null);
+      return;
+    }
+
     const end = new Date();
     const start = new Date();
     start.setDate(end.getDate() - 6); // last 7 days
@@ -254,6 +414,7 @@ export default function App() {
     const { data, error } = await supabase
       .from("events")
       .select("*")
+      .eq("baby_id", currentBabyId)
       .gte("event_date", startKey)
       .lte("event_date", endKey)
       .order("event_time", { ascending: true });
@@ -314,6 +475,7 @@ export default function App() {
     const { data: photosData } = await supabase
       .from('daily_photos')
       .select('*')
+      .eq('baby_id', currentBabyId)
       .gte('photo_date', startKey)
       .lte('photo_date', endKey)
       .order('photo_date', { ascending: true });
@@ -355,9 +517,12 @@ export default function App() {
 
   // --- Photos helpers ---
   async function getPhotoRecordForDate(dateKey: string) {
+    if (!currentBabyId) return null;
+
     const { data, error } = await supabase
       .from("daily_photos")
       .select("*")
+      .eq("baby_id", currentBabyId)
       .eq("photo_date", dateKey)
       .limit(1)
       .maybeSingle();
@@ -382,12 +547,17 @@ export default function App() {
   
 
   async function uploadPhotoForDate(file: File, dateKey: string) {
+    if (!currentBabyId) {
+      setPhotoError('Vauvan tunniste puuttuu. Kirjaudu uudelleen.');
+      return null;
+    }
+
     setPhotoLoading(true);
     setPhotoError(null);
     setPhotoMessage(null);
     try {
       const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf('.')) : '.jpg';
-      const path = `${dateKey}${ext}`;
+      const path = `${currentBabyId}/${dateKey}${ext}`;
       const bucket = 'daily-photos';
       setPhotoMessage('Ladataan...');
 
@@ -400,7 +570,7 @@ export default function App() {
 
       // upsert DB record (replaces existing day record)
       const now = new Date().toISOString();
-      const { data, error } = await supabase.from('daily_photos').upsert({ photo_date: dateKey, photo_path: path, photo_url: path, created_at: now }, { onConflict: 'photo_date' }).select().maybeSingle();
+      const { data, error } = await supabase.from('daily_photos').upsert({ baby_id: currentBabyId, photo_date: dateKey, photo_path: path, photo_url: path, created_at: now }, { onConflict: 'baby_id,photo_date' }).select().maybeSingle();
       if (error) {
         setPhotoError('Tallennus epäonnistui. Yritä uudelleen.');
         setPhotoMessage(null);
@@ -415,8 +585,8 @@ export default function App() {
 
       // ensure there's only one photo event per date: remove existing and insert a single photo event
       try {
-        await supabase.from('events').delete().eq('event_type', 'photo').eq('event_date', dateKey);
-        await supabase.from('events').insert({ event_type: 'photo', event_time: now, event_date: dateKey });
+        await supabase.from('events').delete().eq('baby_id', currentBabyId).eq('event_type', 'photo').eq('event_date', dateKey);
+        await supabase.from('events').insert({ baby_id: currentBabyId, event_type: 'photo', event_time: now, event_date: dateKey });
       } catch (e) {
         // ignore
       }
@@ -445,6 +615,11 @@ export default function App() {
 
   // Delete photo for a date: remove storage file and DB record
   async function deletePhotoForDate(dateKey: string) {
+    if (!currentBabyId) {
+      setPhotoError('Vauvan tunniste puuttuu. Kirjaudu uudelleen.');
+      return;
+    }
+
     try {
       const rec = await getPhotoRecordForDate(dateKey);
       if (!rec) {
@@ -458,9 +633,9 @@ export default function App() {
         throw remErr;
       }
       // remove DB record and any photo event
-      const { error: dbErr } = await supabase.from('daily_photos').delete().eq('photo_date', dateKey);
+      const { error: dbErr } = await supabase.from('daily_photos').delete().eq('baby_id', currentBabyId).eq('photo_date', dateKey);
       try {
-        await supabase.from('events').delete().eq('event_type', 'photo').eq('event_date', dateKey);
+        await supabase.from('events').delete().eq('baby_id', currentBabyId).eq('event_type', 'photo').eq('event_date', dateKey);
       } catch (_) {}
       if (dbErr) {
         setPhotoError('Kuvan poisto tietokannasta epäonnistui.');
@@ -477,9 +652,12 @@ export default function App() {
   }
 
   async function addEvent(type: EventType) {
+    if (!currentBabyId) return;
+
     const now = new Date().toISOString();
 
     const { error } = await supabase.from("events").insert({
+      baby_id: currentBabyId,
       event_type: type,
       event_time: now,
       event_date: currentDateKey,
@@ -496,6 +674,8 @@ export default function App() {
   }
 
   async function removeLatestEvent(type: EventType) {
+    if (!currentBabyId) return;
+
     const latest = [...events]
       .filter((e) => e.type === type)
       .sort(
@@ -509,6 +689,7 @@ export default function App() {
     const { error } = await supabase
       .from("events")
       .delete()
+      .eq("baby_id", currentBabyId)
       .eq("id", latest.id);
 
     if (error) {
@@ -532,11 +713,6 @@ export default function App() {
   const feedingCount = events.filter(
     (e) => e.type === "feeding"
   ).length;
-
-  const safetyOk =
-    poopCount >= 1 &&
-    peeCount >= 5 &&
-    feedingCount >= 10;
 
   const sortedEvents = useMemo(() => {
     return [...events].sort(
@@ -723,8 +899,13 @@ export default function App() {
   }
 
   async function loadAllPhotos() {
+    if (!currentBabyId) {
+      setAllPhotos([]);
+      return;
+    }
+
     try {
-      const { data, error } = await supabase.from('daily_photos').select('*').order('photo_date', { ascending: true });
+      const { data, error } = await supabase.from('daily_photos').select('*').eq('baby_id', currentBabyId).order('photo_date', { ascending: true });
       if (error) {
         console.error('loadAllPhotos error', error);
         setAllPhotos([]);
@@ -767,18 +948,36 @@ export default function App() {
             <div className="lock-card">
               <img src="/avatar.jpg" alt="Miisa" className="brand-avatar lock-avatar" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/avatar.svg'; }} />
               <div className="page-title">iMiisa</div>
-              <div className="lock-prompt">Anna PIN</div>
+              <div className="lock-prompt">Valitse vauva ja anna PIN</div>
+              <select
+                className="pin-input"
+                value={selectedBabyId}
+                onChange={(e) => {
+                  setSelectedBabyId(e.target.value);
+                  setPinError(null);
+                }}
+                aria-label="Vauva"
+                disabled={babiesLoading || babies.length === 0}
+                style={{ marginBottom: 8 }}
+              >
+                {babies.length === 0 ? (
+                  <option value="">{babiesLoading ? "Ladataan vauvoja..." : "Vauvoja ei löytynyt 💛"}</option>
+                ) : (
+                  babies.map((baby) => (
+                    <option key={baby.id} value={baby.id}>{baby.name}</option>
+                  ))
+                )}
+              </select>
               <input
-                inputMode="numeric"
-                pattern="[0-9]*"
                 className="pin-input"
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleUnlock(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleUnlock(); }}
                 aria-label="PIN"
+                placeholder="PIN"
                 autoFocus
               />
-              <button className="unlock-btn" onClick={handleUnlock}>Avaa</button>
+              <button className="unlock-btn" onClick={() => void handleUnlock()} disabled={babiesLoading || babies.length === 0}>Avaa</button>
               {pinError && <div className="pin-error">{pinError}</div>}
             </div>
           </div>
@@ -806,6 +1005,7 @@ export default function App() {
               <img src="/avatar.jpg" alt="Miisa" className="brand-avatar" onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/avatar.svg'; }} />
               <div className="page-title">iMiisa</div>
             </div>
+            {currentBaby && <div className="date-text">👶 {currentBaby.name}</div>}
             <div className="date-text">{formatDate(currentDate)}</div>
 
             <div className="age-container">
@@ -819,10 +1019,6 @@ export default function App() {
           >
             →
           </button>
-        </div>
-
-        <div className="safety-banner" style={{ background: safetyOk ? "#22c55e" : "#ef4444" }}>
-          <h2>{safetyOk ? "😊 Toimenpidemäärät täyttyvät" : "⚠️ Toimenpidemäärät eivät täyty"}</h2>
         </div>
 
         <div className="view-tabs">
